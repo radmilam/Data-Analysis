@@ -1,0 +1,619 @@
+Week 2
+======
+
+Structure of Data Analysis
+---------------------------
+
+### Steps in data analysis
+* Define the question
+ - sci or biz question that you want answered
+* Define the ideal data set
+ - ideal data set
+* Determine what data you can access
+* Obtain the data
+* Clean the data
+* Exploratory data analysis
+ - understand quirks of data set
+* Statistical prediction/modeling
+* Interpret results
+ - what the predictions mean
+* Challenge results
+ - what potential failings of model are
+* Synthesize/write up results
+ - don't include every step performed
+* Create reproducible code
+
+### Defining a question
+* Biz or sci question
+* Type of data collected
+* Applied stats to answer question
+* More formal, theoretical description of data analysis
+
+### Spam example
+
+```{r}
+library(kernlab)
+data(spam)
+dim(spam)
+```
+
+### Subsamplig our data set - generate a test and training set (prediction):
+```{r cache=TRUE}
+set.seed(3435)
+trainIndicator = rbinom(4601, size=1, prob=0.5)
+```
+trainIndicator will be:
+ - 1 if part of training set
+ - 0 if part of test set
+
+generating binomial random variables of size 1 (1 head flip), fair coin (prob=0.5)
+
+4601 - (emails in database)
+```{r}
+table(trainIndicator)
+```
+
+```{r cache=TRUE}
+trainSpam = spam[trainIndicator==1,]
+testSpam = spam[trainIndicator==0,]
+dim(trainSpam)
+```
+
+### Exploratory data analysis
+names - tells us names of the columns, in this case names of the variables in the data frame:
+* num000, fraction of time that number, 000, appears
+* words - fraction of time that word appears
+* camel case words, like charSquarebracket
+* type - spam or not spam, last column in data frame, what we're trying to predict.
+
+```{r}
+names(trainSpam)
+```
+
+We can `head` command to see what these variables look like
+```
+head(trainSpam)
+```
+### Summaries
+```{r}
+table(trainSpam$type)
+```
+
+### Plots
+```{r}
+plot(trainSpam$capitalAve ~ trainSpam$type)
+```
+
+easier to see difference with log
+```{r}
+plot(log10(trainSpam$capitalAve + 1) ~ trainSpam$type)
+```
+
+### Relationship between predictions
+```{r}
+plot(log10(trainSpam[,1:4]+1))
+```
+
+**Clustering** (hierarhical)
+
+Variables that have the same patterns are put close together.
+```{r cache=TRUE}
+hCluster = hclust(dist(t(trainSpam[,1:57])))
+plot(hCluster)
+```
+
+### New clustering
+```{r cache=TRUE}
+hClusterUpdated = hclust(dist(t(log10(trainSpam[,1:55] + 1))))
+plot(hClusterUpdated)
+```
+
+### Statistical prediction/modeling
+
+Take 55 variables that correspond to the fraction of time a word, number or character appear in an email.
+
+```{r cache=TRUE}
+trainSpam$numType = as.numeric(trainSpam$type) - 1
+costFunction = function(x, y) {sum(x != (y > 0.5))}
+cvError = rep(NA, 55)
+library(boot)
+# loop over the 55 variables
+for(i in 1:55) {
+  lmFormula = as.formula(paste("numType~", 
+                               names(trainSpam)[i],
+                               sep=""))
+  # fit a predictive model that relates whether the email is ham or spam to the fraction of times that character or word appears in an email.
+  glmFit = suppressWarnings(glm(lmFormula, family="binomial",
+               data=trainSpam))
+  # calculate error rates for these models
+  cvError[i] = suppressWarnings(cv.glm(trainSpam, glmFit,
+                      costFunction, 2)$delta[2])
+}
+# pick the model with lowest error rate
+which.min(cvError)
+```
+
+Pick name of the model with lowest error rate
+```{r cache=TRUE}
+names(trainSpam)[which.min(cvError)]
+```
+If there's a lot of dollar signs in an email, it's probably spam.
+
+### Get a measure of uncertainty
+
+```{r cache=TRUE}
+# Calculate predicted values for the model that relate the type of the email: spam/ham, the fraction of time `$` appears in an email
+predictionModel = glm(numType ~ charDollar, family="binomial", data=trainSpam)
+# apply that model to the test set, the one we left out when building training set, so we can evaluate how well the prediction model works on a new data set
+predictionTest = predict(predictionModel, testSpam)
+predictedSpam = rep("nonspam", dim(testSpam)[1])
+predictedSpam[predictionModel$fitted > 0.5] = "spam"
+# table that shows the difference in results from our model and test set, we can see how often we made an error.
+table(predictedSpam, testSpam$type)
+```
+
+Error rate:
+```{r}
+(61 + 458)/(1346 + 458 + 61 + 449)
+```
+
+### Interpret results
+
+* Language:
+ * Describes - descriptive analysis
+ * Correlates with/associated with - inference
+ * leads to/causes - causal analysis
+ * predicts - prediction analysis
+
+### Challenge results
+Able to explain to others wheter (you think) analysis is strong or weak and help people make prediction based on the analysis.
+
+Organizing Data Analysis
+------------------------
+* Exploratory figures - files you make for yourself, not necessarily shown to anybody
+* raw scripts - not production quality
+* final scripts - reproduce conclusion
+* text of analysis differs from rmd files
+* raw scripts - not final, can include date, maybe be discarted or sumarized in readme
+
+Getting Data
+============
+
+Get/set working directory
+--------------------------
+
+What working directory are we in?
+```
+getwd()
+```
+
+setting working directory
+```
+setwd('/home/person/code/_R')
+```
+in windows
+```
+setwd("d:\\code\\_R\\someplace")
+```
+
+relative paths
+```
+setwd("./data")
+```
+
+#### getting data from internet
+
+```
+download.file()
+```
+
+### Ex: Baltimore camera data
+[link](https://data.baltimorecity.gov/Transportation/Baltimore-Fixed-Speed-Cameras/dz54-2aru)
+
+```{r cache=TRUE}
+fileUrl <- "https://data.baltimorecity.gov/api/views/dz54-2aru/rows.csv?accessType=DOWNLOAD"
+# parameter method="curl" needed for mac for https
+download.file(fileUrl, destfile="./data/cameras.csv")
+list.files("./data")
+```
+```{r}
+dateDownloaded <- date()
+dateDownloaded
+```
+```{r}
+cameraData <- read.table("./data/cameras.csv", sep=",", header=TRUE)
+head(cameraData)
+```
+
+with csv
+```
+cameraData <- read.csv('./data/cameras.csv')
+head(cameraData)
+```
+
+### Excel Files
+```
+read.xlsx()
+read.xlsx2()
+requires {xlsx package}
+```
+
+### Picking files
+```
+cameradata <- read.csv(file.choose())
+```
+
+###Connections to files
+```
+readLines()
+```
+
+```
+con <- file("./data/cameras.csv", "r")
+cameraData <- read.csv(con)
+close(con)
+head(cameraData)
+```
+
+```
+con <- url("http://simplystatistics.org", "r")
+simplyStats <- readLines(con)
+close(con)
+head(simplyStats)
+```
+
+### Reading JSON files {RJSONIO}
+
+```
+library(RJSONIO)
+fileUrl <- "https://data.baltimorecity.gov/api/views/dz54-2aru/rows.json?accessType=DOWNLOAD"
+download.file(fileUrl, destfile="./data/camera.json")
+con = file("./data/camera.json")
+jsonCamera = fromJson(con)
+close(con)
+head(jsonCamera)
+```
+```
+$meta
+$meta$View
+$meta$view$id
+```
+
+### Writing data - write.table()
+```
+comeraData <- read.csv("./data/cameras.csv")
+tmpData <- cameraData[,-1]
+write.table(tmpData, file="./data/camerasModified.csv", sep=",")
+cameraData2 <- read.csv("./data/camerasModified.csv")
+head(cameraData2)
+```
+
+### Writing data - save(), save.image()
+```
+cameraData <- read.csv("./data/cameras.csv")
+tmpData <- cameraData[,-1]
+save(tmpData, cameraData, file="./data/cameras.rda")
+```
+
+# reading saved data - load()
+```
+# removes every variable loaded into R
+rm(list=ls())
+ls()
+```
+
+```
+load("./data/cameras.rda")
+```
+
+### paste() and paste0()
+* `paste0` same as `paste`, but with `sep=""`
+
+```
+for(i in 1:5){
+  fileName = paste0("./data", i, ".csv")
+  print(fileName)
+}
+
+```
+
+### Getting data off webpages {XML}
+```
+library(XML)
+con = url("http://scholar.google.com/citations?user=HI-I6C0AAAAJ&hl=en")
+htmlCode = readLines(con)
+close(con)
+htmlCode
+```
+
+#### Easier
+```
+url <- "http://scholar.google.com/citations?user=HI-I6C0AAAAJ&hl=en"
+html3 <- htmlTreeParse(url)
+xpathSApply(html3, "//title", xmlValue)
+xpathSApply(html3, "//td[@id='col-citeby']", xmlValue)
+```
+### Further resources
+* httr - simplifies working with http
+* RMySQL
+* bigmemory - **for data larger than RAM**
+* RHadoop - interfacing with hadoop
+* foreign - loading data from SAS, SPSS, Octave
+
+Summarizing Data
+================
+### Earthquake Data
+```{r cache=TRUE}
+fileUrl = "http://earthquake.usgs.gov/earthquakes/catalogs/eqs7day-M1.txt"
+download.file(fileUrl, destfile="./data/earthquakeData.csv")
+dataDownloaded <- date()
+dateDownloaded
+```
+```{r}
+eData <- read.csv("./data/earthquakeData.csv")
+head(eData)
+```
+
+```{r}
+# see if the correct number of variables was loaded
+dim(eData)
+# see if you get the expected names
+names(eData)
+nrow(eData)
+```
+
+See if some variables went out of expected range, are in different units
+
+```{r}
+quantile(eData$Lat)
+```
+```{r}
+summary(eData)
+```
+
+```{r}
+class(eData)
+```
+
+Check if variables in each row are good
+```{r}
+sapply(eData[1,],class)
+```
+
+```{r cache=TRUE}
+unique(eData$Src)
+```
+
+```{r cache=TRUE}
+length(unique(eData$Src))
+
+```
+
+Table of **qualitative** variables, quantitative table will be large
+```{r cache=TRUE}
+table(eData$Src)
+```
+
+#### Relationships
+```{r cache=TRUE}
+table(eData$Src, eData$Version)
+```
+
+Missing data or does some characteristic exists
+```{r}
+eData$Lat[1:10] > 40
+```
+
+```{r}
+any(eData$Lat[1:10] > 40)
+```
+
+```{r}
+all(eData$Lat[1:10] > 40)
+```
+
+#### Subsetting
+
+```{r}
+head(eData[eData$Lat > 0 & eData$Lon > 0, c("Lat", "Lon")])
+```
+
+### Peer review data
+```{r cache=TRUE}
+fileUrl1 <- "http://dl.dropbox.com/u/7710864/data/reviews-apr29.csv"
+fileUrl2 <- "http://dl.dropbox.com/u/7710864/data/solutions-apr29.csv"
+download.file(fileUrl1, destfile="./data/reviews.csv")
+download.file(fileUrl2, destfile="./data/solutions.csv")
+reviews <- read.csv("./data/reviews.csv")
+solutions <- read.csv("./data/solutions.csv")
+head(reviews, 2)
+```
+```{r}
+head(solutions, 2)
+```
+
+#### Find if there are missing values
+```{r}
+is.na(reviews$time_left[1:10])
+```
+
+#### total number of NAs
+```{r}
+sum(is.na(reviews$time_left))
+```
+
+```{r}
+table(is.na(reviews$time_left))
+```
+
+When looking at a table, R hides NAs by default, to enable
+```
+table(reviews$time_left, useNA="ifany")
+```
+
+#### Summarizing rows/columns
+```
+rowSums()
+rowMeans()
+colSums()
+colMeans()
+```
+May need to set `na.rm=TRUE` as a param to the above functions to ignore NA values.
+
+Data Munging Basics
+===================
+
+Fixing character vectors - tolower(), toupper()
+-----------------------------------------------
+```{r}
+cameraData <- read.csv("./data/cameras.csv")
+names(cameraData)
+```
+
+```{r}
+tolower(names(cameraData))
+```
+
+strsplit()
+----------
+```{r}
+splitNames = strsplit(names(cameraData), "\\.")
+splitNames[[5]]
+```
+
+```{r}
+splitNames[[6]]
+```
+
+```{r}
+splitNames[[6]][1]
+```
+
+```{r}
+firstElement <- function(x){x[1]}
+sapply(splitNames, firstElement)
+```
+
+Peer review experiment data
+---------------------------
+```{r}
+fileUrl1 <- "http://dl.dropbox.com/u/7710864/data/reviews-apr29.csv"
+fileUrl2 <- "http://dl.dropbox.com/u/7710864/data/solutions-apr29.csv"
+download.file(fileUrl1, destfile="./data/reviews.csv")
+download.file(fileUrl2, destfile="./data/solutions.csv")
+reviews <- read.csv("./data/reviews.csv")
+solutions <- read.csv("./data/solutions.csv")
+head(reviews, 2)
+```
+
+Fixing character vectors - sub(), gsub()
+----------------------------------------
+```{r}
+names(reviews)
+sub("_", "", names(reviews),)
+gsub("_", "", names(reviews),)
+```
+
+Quantitative variables in ranges - cut()
+----------------------------------------
+
+To look at ranges, precision of variables
+```{r}
+reviews$time_left[1:10]
+```
+```{r}
+timeRanges  <- cut(reviews$time_left, seq(0, 3600, by=600))
+timeRanges[1:10]
+class(timeRanges)
+table(timeRanges, useNA="ifany")
+```
+
+cut2() from {Hmisc}
+------
+Look at quantiles, in this case 6 ranges
+```{r}
+library(Hmisc)
+timeRanges <- cut2(reviews$time_left, g=6)
+table(timeRanges, useNA="ifany")
+```
+
+Adding an extra variable to data frame
+---------------------------------------
+```{r}
+timeRanges <- cut2(reviews$time_left, g=6)
+reviews$timeRanges <- timeRanges
+head(reviews, 2)
+```
+
+Merging data - merge()
+----------------------
+* Merges data frames
+```{r}
+names(reviews)
+names(solutions)
+mergedData <- merge(reviews, solutions, all=TRUE)
+head(mergedData)
+```
+
+If column names don't match
+```{r}
+mergedData2 <- merge(reviews, solutions, by.x="solution_id", by.y="id", all=T)
+head(mergedData2[,1:6], 3)
+```
+```{r}
+reviews[1,1:6]
+```
+
+Sorting values - sort()
+-----------------------
+```{r}
+mergedData2$reviewer_id[1:10]
+sort(mergedData2$reviewer_id)[1:10]
+```
+
+Ordering values - order()
+-------------------------
+Rearrange by particular value, give => list of vars to order, na.last, decreasing
+
+```{r}
+mergedData2$reviewer_id[1:10]
+order(mergedData2$reviewer_id)[1:10]
+```
+
+```{r}
+mergedData2$reviewer_id[order(mergedData2$reviewer_id)]
+```
+
+Reordering a data frame
+-----------------------
+```{r}
+head(mergedData2[,1:6], 3)
+```
+
+Sorted by reviewer_id then id
+```{r}
+sortedData <- mergedData2[order(mergedData2$reviewer_id, mergedData2$id),]
+head(sortedData[,1:6], 3)
+```
+
+Reshaping data - example
+------------------------
+From [paper](http://vita.had.co.nz/papers/tidy-data.pdf)
+```{r}
+misShaped <- as.data.frame(matrix(c(NA, 5, 1, 4, 2, 3), byrow=TRUE, nrow=3))
+names(misShaped) <- c("treatmentA", "treatmentB")
+misShaped$people <- c("John", "Jane", "Mary")
+misShaped
+```
+This gives us observations in rows in variables columns.
+
+melt() function in {reshape2} will reshape the data so that in each row we have a particular observation and in column a variable
+* id.vars - which variable is an id for observation
+* measure.vars - variable we're going to collect
+variable.name
+```{r}
+library(reshape2)
+melt(misShaped, id.vars="people", varialbe.name="treatment", value.name="value")
+```
+
+Data is modeled easier after this transform.

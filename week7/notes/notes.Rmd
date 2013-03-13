@@ -1,0 +1,709 @@
+Smoothing
+=========
+Key idea
+* Sometimes there are non-linear trends in data
+* We can use "smoothing" to try to capture these
+* Still a risk of overfitting
+* Often hard to interpret
+
+CD4 Data
+--------
+```{r}
+if (!file.exists()){
+  download.file("http://spark-public.s3.amazonaws.com/dataanalysis/cd4.data",
+                destfile="./data/cd4.data")
+}
+cd4Data <- read.table("./data/cd4.data", 
+                      col.names=c("time", "cd4", "age", "packs", "drugs", "sex",
+"cesd", "id"))
+cd4Data <- cd4Data[order(cd4Data$time),]
+head(cd4Data)
+```
+
+[http://www.cbcb.umd.edu/~hcorrada/PracticalML/](http://www.cbcb.umd.edu/~hcorrada/PracticalML/)
+
+CD4 over time
+-------------
+There's some kind of pattern
+```{r cache=TRUE}
+plot(cd4Data$time,cd4Data$cd4,pch=19,cex=0.1)
+```
+
+Average first 2 points
+----------------------
+Running average - take first 2 data points, take their average and plot it vs. the average time point of the first two time points.
+```{r cache=TRUE}
+plot(cd4Data$time,cd4Data$cd4,pch=19,cex=0.1)
+points(mean(cd4Data$time[1:2]),mean(cd4Data$cd4[1:2]),col="blue",pch=19)
+```
+
+Average second and third points
+-------------------------------
+```{r cache=TRUE}
+plot(cd4Data$time,cd4Data$cd4,pch=19,cex=0.1)
+points(mean(cd4Data$time[1:2]),mean(cd4Data$cd4[1:2]),col="blue",pch=19)
+points(mean(cd4Data$time[2:3]),mean(cd4Data$cd4[2:3]),col="blue",pch=19)
+```
+
+A moving average
+----------------
+```{r cache=TRUE}
+plot(cd4Data$time,cd4Data$cd4,pch=19,cex=0.1)
+aveTime <- aveCd4 <- rep(NA,length(3:(dim(cd4Data)[1]-2)))
+for(i in 3:(dim(cd4Data)[1]-2)){
+    aveTime[i] <- mean(cd4Data$time[(i-2):(i+2)])
+    aveCd4[i] <- mean(cd4Data$cd4[(i-2):(i+2)])
+}
+lines(aveTime,aveCd4,col="blue",lwd=3)
+```
+For each data value, We average the time points before to two time ponits after the time point in question.
+
+Average more points
+--------------------
+10 points before and after.
+```{r cache=TRUE}
+plot(cd4Data$time,cd4Data$cd4,pch=19,cex=0.1)
+aveTime <- aveCd4 <- rep(NA,length(11:(dim(cd4Data)[1]-10)))
+for(i in 11:(dim(cd4Data)[1]-2)){
+  aveTime[i] <- mean(cd4Data$time[(i-10):(i+10)])
+ aveCd4[i] <- mean(cd4Data$cd4[(i-10):(i+10)])
+}
+lines(aveTime,aveCd4,col="blue",lwd=3)
+```
+
+Average many more
+-----------------
+```{r cache=TRUE}
+plot(cd4Data$time,cd4Data$cd4,pch=19,cex=0.1)
+aveTime <- aveCd4 <- rep(NA,length(201:(dim(cd4Data)[1]-200)))
+for(i in 201:(dim(cd4Data)[1]-2)){
+    aveTime[i] <- mean(cd4Data$time[(i-200):(i+200)])
+    aveCd4[i] <- mean(cd4Data$cd4[(i-200):(i+200)])
+}
+lines(aveTime,aveCd4,col="blue",lwd=3)
+```
+
+A faster way
+------------
+Using the `filter` function.
+```{r cache=TRUE}
+filtTime <- as.vector(filter(cd4Data$time,filter=rep(1,200))/200)
+filtCd4 <- as.vector(filter(cd4Data$cd4,filter=rep(1,200))/200)
+plot(cd4Data$time,cd4Data$cd4,pch=19,cex=0.1); lines(filtTime,filtCd4,col="blue",lwd=3)
+```
+
+Averaging = weighted sums
+-------------------------
+It's what the filter function does.
+```{r cache=TRUE}
+filtCd4 <- as.vector(filter(cd4Data$cd4,filter=rep(1,4))/4)
+filtCd4[2]
+sum(cd4Data$cd4[1:4] * rep(1/4,4))
+```
+
+Other weights -> should sum to one
+----------------------------------
+Disadvantage is that sometimes you might thing that the two values that are very close to each other should contribut a lot of weight to the moving average, but values that are farther apart should contribute less.
+```{r cache=TRUE}
+ws = 10; 
+tukey = function(x) pmax(1 - x^2,0)^2
+filt= tukey(seq(-ws,ws)/(ws+1));
+filt=filt/sum(filt)
+plot(seq(-(ws),(ws)),filt,pch=19)
+```
+Created **tuke weights**, ws = weights. We want the set of weights to sum to 1, hence the value of `filt` argument. Gives good estimate of the function. [7.49] It average points closer to center with higher weights and points farther from center with lower weights.
+
+```{r cache=TRUE}
+ws = 100;
+tukey = function(x) pmax(1 - x^2,0)^2
+filt= tukey(seq(-ws,ws)/(ws+1));
+filt=filt/sum(filt)
+filtTime <- as.vector(filter(cd4Data$time,filter=filt))
+filtCd4 <- as.vector(filter(cd4Data$cd4,filter=filt))
+plot(cd4Data$time,cd4Data$cd4,pch=19,cex=0.1); lines(filtTime,filtCd4,col="blue",lwd=3)
+```
+
+Lowess (loess) - Localy weighted scatter plot smoothing
+----------------------------------------------
+loess is a slight generalization of lowess
+```{r cache=TRUE}
+lw1 <- loess(cd4 ~ time,data=cd4Data)
+plot(cd4Data$time,cd4Data$cd4,pch=19,cex=0.1)
+lines(cd4Data$time,lw1$fitted,col="blue",lwd=3)
+```
+
+Span
+----
+If you don't want to rely on default decisions in loess. `span` relates to the number of points that are used when smoothing. As `span` increases, the line becomes more smooth.
+```{r cache=TRUE}
+plot(cd4Data$time,cd4Data$cd4,pch=19,cex=0.1,ylim=c(500,1500))
+lines(cd4Data$time,loess(cd4 ~ time,data=cd4Data,span=0.1)$fitted,col="blue",lwd=3)
+lines(cd4Data$time,loess(cd4 ~ time,data=cd4Data,span=0.25)$fitted,col="red",lwd=3)
+lines(cd4Data$time,loess(cd4 ~ time,data=cd4Data,span=0.76)$fitted,col="green",lwd=3)
+```
+
+Predicting with loess
+---------------------
+```{r cache=TRUE}
+tme <- seq(-2,5,length=100); 
+pred1 = predict(lw1,newdata=data.frame(time=tme),se=TRUE)
+plot(tme,pred1$fit,col="blue",lwd=3,type="l",ylim=c(0,2500))
+points(cd4Data$time,cd4Data$cd4,pch=19,cex=0.1)
+lines(tme,pred1$fit + 1.96*pred1$se.fit,col="red",lwd=3)
+lines(tme,pred1$fit - 1.96*pred1$se.fit,col="red",lwd=3)
+```
+`pred1` uses the loess object from previous section, `lw1` and calculates standard error, `se`. We calculate prediction intervals with `lines`. `se.fit` is the standard error of the fit. 
+
+Splines
+-------
+Easier to use when you want to adjust for more than one covariant in the model.
+$$latex
+Y_i=b_0+\sum\limits_{k=1}^K b_ks_k(x_i)+e_i
+$$
+
+$Y_i$ - outcome for ith observation
+$b_0$ - Intercept term
+$b_k$ - Coefficient for kth spline function
+$s_k$ - kth spline function
+$x_i$ - covariate for ith observation
+$e_i$ - everything we didn't measure/model
+
+Splines in R
+------------
+Natural cubic splines. `df` - degrees of freedom is the number of functions that are going to be applied to the time variable. The result will be a matrix where each column is equal to one of the functions.
+```{r message=FALSE}
+library(splines)
+```
+
+```{r cache=TRUE}
+ns1 <- ns(cd4Data$time,df=3)
+par(mfrow=c(1,3))
+plot(cd4Data$time,ns1[,1]); 
+plot(cd4Data$time,ns1[,2]); 
+plot(cd4Data$time,ns1[,3])
+```
+For each time, say 0, the point is the value of the function at time 0 times its coefficient + next + next + the intercept term, that will give the new fitted value..
+
+Regression with splines
+-----------------------
+```{r cache=TRUE}
+lm1 <- lm(cd4Data$cd4 ~ ns1)
+summary(lm1)
+```
+We get an intercept and estimates for each coefficient for each of the 3 spline functions. Interpreting the values is not necessarily recommented.
+
+Fitted values
+-------------
+The degrees of freedom is about equal to the polynomial that you would use to fit the data. You can include other variables for lm, but they'll end up getting smoothed too.
+```{r cache=TRUE}
+plot(cd4Data$time,cd4Data$cd4,pch=19,cex=0.1)
+points(cd4Data$time,lm1$fitted,col="blue",pch=19,cex=0.5)
+```
+
+Notes and further resources
+---------------------------
+* Cross-validation with splines/smoothing is a good idea
+* Do not predict outside the range of observed data
+* [ector Corrada Bravo's Lecture Notes](http://www.cbcb.umd.edu/~hcorrada/PracticalML/pdf/lectures/smoothing.pdf)
+* [Rafa Irizarry's Lecture Notes on smoothing, On splines](http://www.biostat.jhsph.edu/~ririzarr/Teaching/649/section-06.pdf)
+* [Elements of Statistical Learning](http://www-stat.stanford.edu/~tibs/ElemStatLearn/)
+* [Advanced Data Analysis from An Elementary Point of View](http://www.stat.cmu.edu/~cshalizi/ADAfaEPoV/ADAfaEPoV.pdf)
+
+
+The bootstrap
+=============
+Key ideas
+* Treat the sample as if it were the population
+
+What it is good for:
+* Calculating standard errors
+* Forming confidence intervals
+* Performing hypothesis tests
+* Improving predictors
+
+The "Central Dogma" of statistics
+---------------------------------
+We have a population, we take many samples and treat them as population. If we want to estimate mean, $\Theta$.
+$$latex
+\Theta=t(F)
+$$
+Sample 1:
+$$latex
+\hat{\Theta}^1=f(\hat{F}_n^1)
+$$
+Sample $\infty$
+$$latex
+\hat{\Theta}^\infty=f(\hat{F}_n^\infty)
+$$
+
+[http://www.gs.washington.edu/academics/courses/akey/56008/lecture/lecture5.pdf](http://www.gs.washington.edu/academics/courses/akey/56008/lecture/lecture5.pdf)
+
+Example
+-------
+```{r cache=TRUE}
+set.seed(333); x <- rnorm(30)
+bootMean <- rep(NA,1000); sampledMean <- rep(NA,1000)
+for(i in 1:1000){bootMean[i] <- mean(sample(x,replace=TRUE))}
+for(i in 1:1000){sampledMean[i] <- mean(rnorm(30))}
+plot(density(bootMean)); lines(density(sampledMean),col="red")
+```
+
+Example with boot package
+-------------------------
+```{r cache=TRUE}
+set.seed(333); x <- rnorm(30); sampledMean <- rep(NA,1000)
+for(i in 1:1000){sampledMean[i] <- mean(rnorm(30))}
+meanFunc <- function(x,i){mean(x[i])}
+bootMean <- boot(x,meanFunc,1000)
+bootMean
+```
+
+Plotting boot package example
+-----------------------------
+```{r cache=TRUE}
+plot(density(bootMean$t)); lines(density(sampledMean),col="red")
+```
+
+Nuclear cost
+------------
+```{r message=FALSE}
+library(boot)
+```
+
+```{r cache=TRUE}
+data(nuclear)
+nuke.lm <- lm(log(cost) ~ date,data=nuclear)
+plot(nuclear$date,log(nuclear$cost),pch=19)
+abline(nuke.lm,col="red",lwd=3)
+```
+
+```{r cache=TRUE}
+par(mfrow=c(1,3))
+for(i in 1:3){
+  nuclear0 <- nuclear[sample(1:dim(nuclear)[1],replace=TRUE),]
+  nuke.lm0 <- lm(log(cost) ~ date,data=nuclear0)
+  plot(nuclear0$date,log(nuclear0$cost),pch=19)
+  abline(nuke.lm0,col="red",lwd=3)
+}
+```
+
+Bootstrap distribution
+-----------------------
+```{r cache=TRUE}
+bs <- function(data, indices,formula) {
+  d <- data[indices,];fit <- lm(formula, data=d);return(coef(fit)) 
+} 
+results <- boot(data=nuclear, statistic=bs, R=1000, formula=log(cost) ~ date)
+plot(density(results$t[,2]),col="red",lwd=3)
+lines(rep(nuke.lm$coeff[2],10),seq(0,8,length=10),col="blue",lwd=3)
+```
+
+Bootstrap Confidence Intervals
+------------------------------
+```{r cache=TRUE}
+boot.ci(results)
+```
+
+Bootstrapping from model
+------------------------
+```{r cache=TRUE}
+resid <- rstudent(nuke.lm)
+fit0 <- fitted(lm(log(cost) ~ 1,data=nuclear))
+newNuc <- cbind(nuclear,resid=resid,fit0=fit0)
+bs <- function(data, indices) {
+  return(coef(glm(data$fit0 + data$resid[indices] ~ data$date,data=data)))
+} 
+results <- boot(data=newNuc, statistic=bs, R=1000)
+```
+
+Results
+-------
+```{r cache=TRUE}
+plot(density(results$t[,2]),lwd=3,col="blue")
+lines(rep(coef(nuke.lm)[2],10),seq(0,3,length=10),col="red",lwd=3)
+```
+
+An empirical p-value
+--------------------
+$$latex
+\hat{p}=\frac{1+\sum\limits_{b=1}^B|t_b^0|>|t|}{B+1}
+$$
+```{r cache=TRUE}
+B <- dim(results$t)[1]
+(1 + sum((abs(results$t[,2]) > abs(coef(nuke.lm)[2]))))/(B+1)
+```
+
+Bootstrapping non-linear statistics
+------------------------------------
+```{r cache=TRUE}
+set.seed(555); x <- rnorm(30); sampledMed <- rep(NA,1000)
+for(i in 1:1000){sampledMed[i] <- median(rnorm(30))}
+medFunc <- function(x,i){median(x[i])}; bootMed <- boot(x,medFunc,1000)
+plot(density(bootMed$t),col="red",lwd=3)
+lines(density(sampledMed),lwd=3)
+```
+
+Things you can't bootstrap (max)
+--------------------------------
+```{r cache=TRUE}
+set.seed(333); x <- rnorm(30); sampledMax <- rep(NA,1000)
+for(i in 1:1000){sampledMax[i] <- max(rnorm(30))}
+maxFunc <- function(x,i){max(x[i])}; bootMax <- boot(x,maxFunc,1000)
+plot(density(bootMax$t),col="red",lwd=3,xlim=c(1,3))
+lines(density(sampledMax),lwd=3)
+```
+
+Notes and further resources
+----------------------------
+Notes:
+* Can be useful for complicated statistics
+* Be careful near the boundaries
+* Be careful with non-linear functions
+
+Further resources:
+* [Brian Caffo's bootstrap notes](http://ocw.jhsph.edu/courses/MethodsInBiostatisticsI/PDFs/lecture12.pdf)
+* [Nice basic intro to boot package](http://www.mayin.org/ajayshah/KB/R/documents/boot.html)
+* [Another basic boot tutorial](http://www.statmethods.net/advstats/bootstrapping.html)
+* [An introduction to the bootstrap](http://www.amazon.com/Introduction-Bootstrap-Monographs-Statistics-Probability/dp/0412042312)
+* [Confidence limits on phylogenies](http://www.jstor.org/discover/10.2307/2408678?uid=3739704&uid=2&uid=4&uid=3739256&sid=21101897412687)
+
+
+Bootstrapping for prediction
+============================
+Bootstrapping can be used for
+* Cross-validation type error rates
+* Prediction errors in regression models
+* Improving prediction
+
+Bootstrapping prediction errors
+-------------------------------
+```{r message=FALSE}
+library(boot); 
+```
+
+```{r cache=TRUE}
+data(nuclear)
+nuke.lm <- lm(log(cost) ~ date,data=nuclear)
+plot(nuclear$date,log(nuclear$cost),pch=19)
+abline(nuke.lm,col="red",lwd=3)
+```
+
+```{r cache=TRUE}
+newdata <- data.frame(date = seq(65,72,length=100))
+nuclear <- cbind(nuclear,resid=rstudent(nuke.lm),fit=fitted(nuke.lm))
+nuke.fun <- function(data,inds,newdata){
+  lm.b <- lm(fit + resid[inds] ~ date,data=data)
+  pred.b <- predict(lm.b,newdata)
+  return(pred.b)
+}
+nuke.boot <- boot(nuclear,nuke.fun,R=1000,newdata=newdata)
+head(nuke.boot$t)
+```
+
+```{r cache=TRUE}
+pred <- predict(nuke.lm,newdata)
+predSds <- apply(nuke.boot$t,2,sd)
+plot(newdata$date,pred,col="black",type="l",lwd=3,ylim=c(0,10))
+lines(newdata$date,pred + 1.96*predSds,col="red",lwd=3)
+lines(newdata$date,pred - 1.96*predSds,col="red",lwd=3)
+```
+
+Bootstrap aggregating (bagging)
+--------------------------------
+Basic idea:
+* Resample cases and recalculate predictions
+* Average or majority vote
+
+Notes:
+* Similar bias
+* Reduced variance
+* More useful for non-linear functions
+
+Bagged loess
+------------
+```{r message=FALSE}
+library(ElemStatLearn);
+```
+
+```{r cache=TRUE}
+data(ozone,package="ElemStatLearn")
+ozone <- ozone[order(ozone$ozone),]
+head(ozone)
+```
+
+[http://en.wikipedia.org/wiki/Bootstrap_aggregating](http://en.wikipedia.org/wiki/Bootstrap_aggregating)
+
+```{r cache=TRUE}
+ll <- matrix(NA,nrow=10,ncol=155)
+for(i in 1:10){
+  ss <- sample(1:dim(ozone)[1],replace=T)
+  ozone0 <- ozone[ss,]; ozone0 <- ozone0[order(ozone0$ozone),]
+  loess0 <- loess(temperature ~ ozone,data=ozone0,span=0.2)
+  ll[i,] <- predict(loess0,newdata=data.frame(ozone=1:155))
+}
+```
+
+```{r cache=TRUE}
+plot(ozone$ozone,ozone$temperature,pch=19,cex=0.5)
+for(i in 1:10){lines(1:155,ll[i,],col="grey",lwd=2)}
+lines(1:155,apply(ll,2,mean),col="red",lwd=2)
+```
+
+Bagged trees
+------------
+Basic idea:
+* Resample data
+* Recalculate tree
+* Average/mode) of predictors
+
+Notes:
+* More stable
+* May not be as good as random forests
+
+Iris data
+---------
+```{r cache=TRUE}
+data(iris)
+head(iris)
+```
+
+Bagging a tree
+--------------
+```{r message=FALSE}
+library(ipred)
+```
+
+```{r cache=TRUE}
+bagTree <- bagging(Species ~.,data=iris,coob=TRUE)
+print(bagTree)
+```
+
+Looking at bagged tree one
+--------------------------
+```{r cache=TRUE}
+bagTree$mtrees[[1]]$btree
+```
+
+Looking at bagged tree two
+--------------------------
+```{r cache=TRUE}
+bagTree$mtrees[[2]]$btree
+```
+
+Random forests
+---------------
+* Bootstrap samples
+* At each split, bootstrap variables
+* Grow multiple trees and vote
+
+Pros:
+* Accuracy
+
+Cons:
+* Speed
+* Interpretability
+* Overfitting
+
+```{r message=FALSE}
+library(randomForest)
+```
+
+```{r cache=TRUE}
+forestIris <- randomForest(Species~ Petal.Width + Petal.Length,data=iris,prox=TRUE)
+forestIris
+```
+
+Getting a single tree
+---------------------
+```{r cache=TRUE}
+getTree(forestIris,k=2)
+```
+
+Class "centers"
+---------------
+```{r cache=TRUE}
+iris.p <- classCenter(iris[,c(3,4)], iris$Species, forestIris$prox)
+plot(iris[,3], iris[,4], pch=21, xlab=names(iris)[3], ylab=names(iris)[4],
+bg=c("red", "blue", "green")[as.numeric(factor(iris$Species))],
+main="Iris Data with Prototypes")
+points(iris.p[,1], iris.p[,2], pch=21, cex=2, bg=c("red", "blue", "green"))
+```
+
+Combining random forests
+------------------------
+```{r cache=TRUE}
+forestIris1 <- randomForest(Species~Petal.Width + Petal.Length,
+                            data=iris,
+                            prox=TRUE,
+                            ntree=50)
+forestIris2 <- randomForest(Species~Petal.Width + Petal.Length,
+                            data=iris,
+                            prox=TRUE,
+                            ntree=50)
+forestIris3 <- randomForest(Species~Petal.Width + Petal.Length,
+                            data=iris,
+                            prox=TRUE,
+                            nrtee=50)
+combine(forestIris1, forestIris2, forestIris3)
+```
+
+Predicting new values
+---------------------
+```{r cache=TRUE}
+newdata <- data.frame(Sepal.Length<- rnorm(1000,
+                                           mean(iris$Sepal.Length),
+                                           sd(iris$Sepal.Length)),
+                      Sepal.Width <- rnorm(1000,
+                                           mean(iris$Sepal.Width),
+                                           sd(iris$Sepal.Width)),
+                      Petal.Width <- rnorm(1000,
+                                           mean(iris$Petal.Width),
+                                           sd(iris$Petal.Width)),
+                      Petal.Length <- rnorm(1000,
+                                            mean(iris$Petal.Length),
+                                            sd(iris$Petal.Length)))
+
+pred <- predict(forestIris, newdata)
+```
+
+```{r cache=TRUE}
+plot(newdata[,4], newdata[,3], pch=21, xlab="Petal.Length",ylab="Petal.Width",
+bg=c("red", "blue", "green")[as.numeric(pred)],main="newdata Predictions")
+```
+
+Notes and further resources
+-----------------------------
+Notes:
+* Bootstrapping is useful for nonlinear models
+* Care should be taken to avoid overfitting (see rfcv funtion)
+* Out of bag estimates are efficient estimates of test error
+
+Further resources:
+* [Random forests](http://www.stat.berkeley.edu/~breiman/RandomForests/cc_home.htm)
+* [Random forest Wikipedia](http://en.wikipedia.org/wiki/Random_forest)
+* [Bagging](http://en.wikipedia.org/wiki/Bootstrap_aggregating)
+* [Bagging and boosting](http://stat.ethz.ch/education/semesters/FS_2008/CompStat/sk-ch8.pdf)
+
+Combining predictors
+--------------------
+Key ideas
+* You can combine classifiers by averaging/voting
+* Combining classifiers improves accuracy
+* Combining classifiers reduces interpretability
+
+Netflix prize
+--------------
+
+Basic intuition - majority vote
+--------------------------------
+Suppose we have 5 completely independent classifiers
+
+If accuracy is 70% for each:
+* $10\cdot(0.7)^3\cdot(0.3)^2+5\cdot(0.7)^4\cdot(0.3)^1+(0.7)^5$
+* 83.7% majority vote accuracy
+
+With 101 independent classifiers
+* 99.9% majority vote accuracy
+
+Approaches for combining classifiers
+* Bagging (see previous lecture)
+* Boosting
+* Combining different classifiers
+
+Example
+--------
+```{r message=FALSE}
+#library(devtools)
+#install_github("medley","mewo2")
+library(medley)
+```
+
+```{r cache=TRUE}
+
+set.seed(453234)
+y <- rnorm(1000)
+x1 <- (y > 0); x2 <- y*rnorm(1000)
+x3 <- rnorm(1000,mean=y,sd=1); x4 <- (y > 0) & (y < 3)
+x5 <- rbinom(1000,size=4,prob=exp(y)/(1+exp(y)))
+x6 <- (y < -2) | (y > 2)
+data <- data.frame(y=y,x1=x1,x2=x2,x3=x3,x4=x4,x5=x5,x6=x6)
+train <- sample(1:1000,size=500)
+trainData <- data[train,]; testData <- data[-train,]
+```
+
+
+Basic models
+------------
+```{r message=FALSE}
+library(tree)
+```
+
+```{r cache=TRUE}
+lm1 <- lm(y ~.,data=trainData)
+rmse(predict(lm1,data=testData),testData$y)
+tree1 <- tree(y ~.,data=trainData)
+rmse(predict(tree1,data=testData),testData$y)
+
+tree2 <- tree(y~.,data=trainData[sample(1:dim(trainData)[1]),])
+```
+
+Combining models
+----------------
+```{r cache=TRUE}
+combine1 <- predict(lm1,data=testData)/2 + predict(tree1,data=testData)/2
+rmse(combine1,testData$y)
+
+combine2 <- (predict(lm1,data=testData)/3 + predict(tree1,data=testData)/3 
+             + predict(tree2,data=testData)/3)
+rmse(combine2,testData$y)
+```
+
+Medley package
+---------------
+```{r message=FALSE}
+#library(devtools)
+#install_github("medley","mewo2")
+library(medley)
+library(e1071)
+library(randomForests)
+```
+
+```{r cache=TRUE}
+x <- trainData[,-1]
+y <- trainData$y
+newx <- testData[,-1]
+```
+
+[http://www.kaggle.com/users/10748/martin-o-leary](http://www.kaggle.com/users/10748/martin-o-leary)
+
+Blending models (part 1)
+-------------------------
+```{r cache=TRUE}
+m <- create.medley(x, y, errfunc=rmse);
+for (g in 1:10) {
+  m <- add.medley(m, svm, list(gamma=1e-3 * g));
+}
+```
+
+Blending models (part 2)
+------------------------
+```{r cache=TRUE}
+for (mt in 1:2) {
+  m <- add.medley(m, randomForest, list(mtry=mt));
+}
+
+m <- prune.medley(m, 0.8);
+rmse(predict(m,newx),testData$y)
+```
+
+Notes and further resources
+---------------------------
+Notes:
+* Even simple blending can be useful
+* Majority vote is typical model for binary/multiclass data
+* Makes models hard to interpret
+
+Further resources:
+* [Bayesian model averaging](http://www.research.att.com/~volinsky/bma.html)
+* [Heritage health prize](https://www.heritagehealthprize.com/c/hhp/details/milestone-winners)
+* [Netflix model blending](http://www2.research.att.com/~volinsky/papers/chance.pdf)
